@@ -1,85 +1,683 @@
-const generateForm = document.querySelector(".generate-form");
-const generateBtn = generateForm.querySelector(".generate-btn");
-const imageGallery = document.querySelector(".image-gallery");
+/* ========================================
+   PixelMind AI — script.js
+   ======================================== */
 
-const OPENAI_API_KEY = "YOUR-OPENAI-API-KEY-HERE"; // Your OpenAI API key here
-let isImageGenerating = false;
+// ─── API Key Helpers ──────────────────────────────────────────────────────────
+function getKey()       { return localStorage.getItem("pixelmind_api_key") || ""; }
+function saveKey(k)     { localStorage.setItem("pixelmind_api_key", k); }
+function clearKey()     { localStorage.removeItem("pixelmind_api_key"); }
 
-const updateImageCard = (imgDataArray) => {
-  imgDataArray.forEach((imgObject, index) => {
-    const imgCard = imageGallery.querySelectorAll(".img-card")[index];
-    const imgElement = imgCard.querySelector("img");
-    const downloadBtn = imgCard.querySelector(".download-btn");
-    
-    // Set the image source to the AI-generated image data
-    const aiGeneratedImage = `data:image/jpeg;base64,${imgObject.b64_json}`;
-    imgElement.src = aiGeneratedImage;
-    
-    // When the image is loaded, remove the loading class and set download attributes
-    imgElement.onload = () => {
-      imgCard.classList.remove("loading");
-      downloadBtn.setAttribute("href", aiGeneratedImage);
-      downloadBtn.setAttribute("download", `${new Date().getTime()}.jpg`);
-    }
-  });
-}
+// ─── Suggestion Database ──────────────────────────────────────────────────────
+const SUGGESTIONS_DB = [
+  "A majestic dragon soaring above glowing neon clouds at midnight",
+  "A witch's enchanted forest cottage with glowing mushrooms and fireflies",
+  "A knight in shining armor standing before a burning castle at dusk",
+  "An ancient wizard's tower floating above the clouds, surrounded by lightning",
+  "A mermaid resting on a glowing coral reef in a deep blue ocean",
+  "A phoenix rising from golden flames above a misty mountain",
+  "A mystical portal to another dimension in a dark forest",
+  "A fairy village hidden inside a giant glowing mushroom",
+  "A futuristic city at sunset with neon lights and flying cars",
+  "An astronaut walking on Mars with Earth visible in the distance",
+  "A space station orbiting a colorful nebula in deep space",
+  "A cyberpunk street market at night with neon signs and rain puddles",
+  "A robot tending to a futuristic garden on the moon",
+  "An alien marketplace on a distant planet with two suns",
+  "A futuristic underwater city with transparent domes and submarines",
+  "A starship emerging from hyperspace near a dying star",
+  "A serene Japanese zen garden in autumn with golden leaves",
+  "Northern lights over a snow-covered cabin in a pine forest",
+  "A breathtaking waterfall into a luminous blue lagoon in a jungle",
+  "Cherry blossom trees lining a mountain path at sunrise",
+  "A misty mountain lake reflecting a rainbow after rain",
+  "Giant glowing jellyfish floating in a bioluminescent ocean at night",
+  "A magical forest where trees glow with soft golden light",
+  "A desert oasis at sunset with golden sand dunes and palm trees",
+  "A warrior princess with glowing armor standing on a cliff at sunset",
+  "A mysterious hooded figure with glowing eyes in a dark alley",
+  "A steampunk inventor surrounded by gears and gadgets in a workshop",
+  "An elegant Victorian-era woman in a rose garden, soft portrait lighting",
+  "A samurai meditating in cherry blossom forest, cinematic shot",
+  "A cyberpunk hacker with neon tattoos in a dark digital world",
+  "A cozy rain-soaked coffee shop with warm amber lighting, bokeh",
+  "A massive gothic cathedral illuminated by moonlight, foggy night",
+  "An ancient Mayan temple overgrown with glowing tropical vines",
+  "A floating sky island with waterfalls and medieval towers",
+  "A library inside a giant hollow tree, sunlight filtering through leaves",
+  "A Victorian mansion on a stormy cliffside, lightning in the background",
+  "An explosion of colorful galaxies and stardust in deep space",
+  "A wolf made entirely of auroras and constellations",
+  "A surreal clock melting over a peaceful ocean landscape, Dali style",
+  "A human silhouette made of golden light in a dark universe",
+  "A shattered mirror reflecting different worlds, surreal art",
+];
 
-const generateAiImages = async (userPrompt, userImgQuantity) => {
+const SURPRISE_PROMPTS = [
+  "A majestic dragon soaring over a glowing neon city at midnight",
+  "An astronaut walking through a blooming cherry blossom forest on Mars",
+  "A cozy cabin in an enchanted forest with glowing fireflies, foggy atmosphere",
+  "An underwater city made of crystal, fish swimming through crystal towers",
+  "A samurai standing on a cliff overlooking a futuristic Tokyo skyline at sunset",
+  "A giant turtle carrying an entire ocean ecosystem on its back, surreal art",
+  "A steampunk airship sailing through clouds of golden dust at dawn",
+  "A witch's cottage nestled in a giant mushroom forest, magical ambiance",
+  "A cyberpunk street market at night, neon signs reflecting on rain puddles",
+  "An ancient temple overgrown with luminous flora, mysterious and serene",
+  "A wolf made entirely of galaxies and stardust howling at the moon",
+  "A Victorian-era library floating in outer space, stars visible through windows",
+  "A phoenix rising from the ocean, wings made of water and fire intertwined",
+  "A futuristic greenhouse on the moon with Earth visible in the background",
+  "A medieval knight battling a storm giant in a thunderstruck landscape",
+];
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+// Wrap everything in DOMContentLoaded so all getElementById calls are safe
+document.addEventListener("DOMContentLoaded", () => {
+
+  // ─── State ─────────────────────────────────────────────────────────────────
+  let isImageGenerating = false;
+  let selectedStyle     = "";
+  let selectedCount     = 1;
+  let selectedSize      = "1024x1024";
+  let currentPrompt     = "";
+  let historyData       = [];
+  let lightboxPromptText = "";
+  let highlightedIndex  = -1;
+
   try {
-    // Send a request to the OpenAI API to generate images based on user inputs
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        prompt: userPrompt,
-        n: userImgQuantity,
-        size: "512x512",
-        response_format: "b64_json"
-      }),
+    historyData = JSON.parse(localStorage.getItem("pixelmind_history") || "[]");
+  } catch { historyData = []; }
+
+  // ─── DOM Refs ───────────────────────────────────────────────────────────────
+  const generateBtn      = document.getElementById("generateBtn");
+  const promptInput      = document.getElementById("promptInput");
+  const imageGallery     = document.getElementById("imageGallery");
+  const gallerySection   = document.getElementById("gallerySection");
+  const galleryMeta      = document.getElementById("galleryMeta");
+  const progressWrap     = document.getElementById("progressWrap");
+  const progressBar      = document.getElementById("progressBar");
+  const toastEl          = document.getElementById("toast");
+  const lightbox         = document.getElementById("lightbox");
+  const lightboxImg      = document.getElementById("lightboxImg");
+  const lightboxDownload = document.getElementById("lightboxDownload");
+  const lightboxCopy     = document.getElementById("lightboxCopy");
+  const lightboxPromptEl = document.getElementById("lightboxPrompt");
+  const historyList      = document.getElementById("historyList");
+  const suggestionsBox   = document.getElementById("suggestionsBox");
+  const suggestionsList  = document.getElementById("suggestionsList");
+  const generatePanel    = document.getElementById("generatePanel");
+  const historyPanel     = document.getElementById("historyPanel");
+
+  // Modal elements
+  const apiKeyModal  = document.getElementById("apiKeyModal");
+  const apiKeyInput  = document.getElementById("apiKeyInput");
+  const apiKeyBtn    = document.getElementById("apiKeyBtn");
+  const keyBtnLabel  = document.getElementById("keyBtnLabel");
+  const apiKeySave   = document.getElementById("apiKeySave");
+  const apiKeyClear  = document.getElementById("apiKeyClear");
+  const keyToggleBtn = document.getElementById("keyToggleBtn");
+
+  // ─── Toast ──────────────────────────────────────────────────────────────────
+  function showToast(msg, type = "default") {
+    toastEl.textContent = msg;
+    toastEl.className = `toast show ${type}`;
+    setTimeout(() => { toastEl.className = "toast"; }, 2800);
+  }
+
+  // ─── Style Presets ──────────────────────────────────────────────────────────
+  document.querySelectorAll(".preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedStyle = btn.dataset.style;
+    });
+  });
+
+  // ─── Segmented Controls ─────────────────────────────────────────────────────
+  document.querySelectorAll("#imgCountControl .seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#imgCountControl .seg-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedCount = parseInt(btn.dataset.value);
+    });
+  });
+
+  document.querySelectorAll("#imgSizeControl .seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#imgSizeControl .seg-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedSize = btn.dataset.value;
+    });
+  });
+
+  // ─── Surprise Me ────────────────────────────────────────────────────────────
+  document.getElementById("surpriseBtn").addEventListener("click", () => {
+    promptInput.value = SURPRISE_PROMPTS[Math.floor(Math.random() * SURPRISE_PROMPTS.length)];
+    promptInput.focus();
+    hideSuggestions();
+    showToast("✨ Surprise prompt loaded!");
+  });
+
+  // ─── Copy Prompt ────────────────────────────────────────────────────────────
+  document.getElementById("copyPromptBtn").addEventListener("click", () => {
+    const text = promptInput.value.trim();
+    if (!text) return showToast("Nothing to copy!", "error");
+    navigator.clipboard.writeText(text).then(() => showToast("✅ Prompt copied!", "success"));
+  });
+
+  // ─── Clear Prompt ───────────────────────────────────────────────────────────
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    promptInput.value = "";
+    hideSuggestions();
+    promptInput.focus();
+  });
+
+  // ─── Nav Tabs ───────────────────────────────────────────────────────────────
+  document.getElementById("navGenerate").addEventListener("click", () => {
+    document.getElementById("navGenerate").classList.add("active");
+    document.getElementById("navHistory").classList.remove("active");
+    generatePanel.style.display  = "";
+    gallerySection.style.display = imageGallery.children.length ? "" : "none";
+    historyPanel.style.display   = "none";
+  });
+
+  document.getElementById("navHistory").addEventListener("click", () => {
+    document.getElementById("navHistory").classList.add("active");
+    document.getElementById("navGenerate").classList.remove("active");
+    generatePanel.style.display  = "none";
+    gallerySection.style.display = "none";
+    historyPanel.style.display   = "";
+    renderHistory();
+  });
+
+  // ─── Quick Tags ─────────────────────────────────────────────────────────────
+  document.querySelectorAll(".quick-tag").forEach(tag => {
+    tag.addEventListener("click", () => {
+      promptInput.value = tag.dataset.text;
+      promptInput.focus();
+      hideSuggestions();
+      showToast("✏️ Prompt loaded!", "success");
+    });
+  });
+
+  // ─── Progress Bar ────────────────────────────────────────────────────────────
+  let progressInterval;
+  function startProgress() {
+    progressWrap.style.display = "block";
+    progressBar.style.width    = "0%";
+    let p = 0;
+    progressInterval = setInterval(() => {
+      if (p < 85) {
+        p += Math.random() * 3 + 1;
+        progressBar.style.width = Math.min(p, 85) + "%";
+      }
+    }, 400);
+  }
+
+  function finishProgress() {
+    clearInterval(progressInterval);
+    progressBar.style.width = "100%";
+    setTimeout(() => {
+      progressWrap.style.display = "none";
+      progressBar.style.width    = "0%";
+    }, 600);
+  }
+
+  // ─── Inline SVG Spinner (no external file needed) ───────────────────────────
+  function makeSpinnerEl() {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 50 50");
+    svg.setAttribute("class", "spinner-svg");
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "25");
+    circle.setAttribute("cy", "25");
+    circle.setAttribute("r", "20");
+    circle.setAttribute("fill", "none");
+    circle.setAttribute("stroke", "#8b5cf6");
+    circle.setAttribute("stroke-width", "4");
+    circle.setAttribute("stroke-dasharray", "80");
+    circle.setAttribute("stroke-linecap", "round");
+    svg.appendChild(circle);
+    return svg;
+  }
+
+  // ─── Image Card Builder ─────────────────────────────────────────────────────
+  function buildLoadingCard() {
+    const card = document.createElement("div");
+    card.className = "img-card loading";
+    card.appendChild(makeSpinnerEl());
+    return card;
+  }
+
+  function buildImageCard(src, prompt) {
+    const card = document.createElement("div");
+    card.className = "img-card";
+    card.dataset.prompt = prompt;
+
+    const img   = document.createElement("img");
+    img.src     = src;
+    img.alt     = "AI generated image";
+    img.loading = "lazy";
+    card.appendChild(img);
+
+    const overlay = document.createElement("div");
+    overlay.className = "img-card-overlay";
+
+    const dlBtn = document.createElement("button");
+    dlBtn.className = "card-action-btn";
+    dlBtn.title     = "Download";
+    dlBtn.innerHTML = '<i class="fas fa-download"></i>';
+    dlBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      downloadBlob(src, `pixelmind-${Date.now()}.jpg`);
     });
 
-    // Throw an error message if the API response is unsuccessful
-    if(!response.ok) throw new Error("Failed to generate AI images. Make sure your API key is valid.");
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "card-action-btn";
+    expandBtn.title     = "Expand";
+    expandBtn.innerHTML = '<i class="fas fa-expand"></i>';
+    expandBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      openLightbox(src, prompt);
+    });
 
-    const { data } = await response.json(); // Get data from the response
-    updateImageCard([...data]);
-  } catch (error) {
-    alert(error.message);
-  } finally {
-    generateBtn.removeAttribute("disabled");
-    generateBtn.innerText = "Generate";
-    isImageGenerating = false;
+    overlay.appendChild(dlBtn);
+    overlay.appendChild(expandBtn);
+    card.appendChild(overlay);
+    card.addEventListener("click", () => openLightbox(src, prompt));
+    return card;
   }
-}
 
-const handleImageGeneration = (e) => {
-  e.preventDefault();
-  if(isImageGenerating) return;
+  // ─── Download Helper ────────────────────────────────────────────────────────
+  async function downloadBlob(src, filename) {
+    try {
+      const res  = await fetch(src);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch {
+      window.open(src, "_blank");
+    }
+  }
 
-  // Get user input and image quantity values
-  const userPrompt = e.srcElement[0].value;
-  const userImgQuantity = parseInt(e.srcElement[1].value);
-  
-  // Disable the generate button, update its text, and set the flag
-  generateBtn.setAttribute("disabled", true);
-  generateBtn.innerText = "Generating";
-  isImageGenerating = true;
-  
-  // Creating HTML markup for image cards with loading state
-  const imgCardMarkup = Array.from({ length: userImgQuantity }, () => 
-      `<div class="img-card loading">
-        <img src="images/loader.svg" alt="AI generated image">
-        <a class="download-btn" href="#">
-          <img src="images/download.svg" alt="download icon">
-        </a>
-      </div>`
-  ).join("");
+  // ─── URL → base64 (for history persistence) ─────────────────────────────────
+  async function blobToDataURL(url) {
+    const res  = await fetch(url);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror  = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
 
-  imageGallery.innerHTML = imgCardMarkup;
-  generateAiImages(userPrompt, userImgQuantity);
-}
+  // ─── Update gallery after generation ────────────────────────────────────────
+  function updateImageCards(urlArray) {
+    const loadingCards = imageGallery.querySelectorAll(".img-card.loading");
+    urlArray.forEach((url, i) => {
+      const newCard = buildImageCard(url, currentPrompt);
+      if (loadingCards[i]) loadingCards[i].replaceWith(newCard);
+      // Save to history asynchronously (convert URL → base64)
+      blobToDataURL(url)
+        .then(dataUrl => saveToHistory(dataUrl, currentPrompt, selectedSize, selectedStyle))
+        .catch(()     => saveToHistory(url,     currentPrompt, selectedSize, selectedStyle));
+    });
+  }
 
-generateForm.addEventListener("submit", handleImageGeneration);
+  // ─── Main Generation ────────────────────────────────────────────────────────
+  async function generateAiImages() {
+    const rawPrompt = promptInput.value.trim();
+    if (!rawPrompt) return showToast("⚠️ Please enter a prompt first!", "error");
+    if (isImageGenerating) return;
+
+    const apiKey = getKey();
+    if (!apiKey) {
+      openApiKeyModal();
+      showToast("🔑 Please set your OpenAI API key first!", "error");
+      return;
+    }
+
+    hideSuggestions();
+    currentPrompt     = selectedStyle ? `${rawPrompt}, ${selectedStyle}` : rawPrompt;
+    isImageGenerating = true;
+
+    generateBtn.disabled = true;
+    generateBtn.querySelector(".btn-text").style.display    = "none";
+    generateBtn.querySelector(".btn-loading").style.display = "inline-flex";
+
+    gallerySection.style.display = "";
+    imageGallery.innerHTML = "";
+    galleryMeta.textContent = `${selectedCount} image${selectedCount > 1 ? "s" : ""} • ${selectedSize}`;
+    for (let i = 0; i < selectedCount; i++) {
+      imageGallery.appendChild(buildLoadingCard());
+    }
+
+    startProgress();
+
+    try {
+      // DALL-E 3 only allows n=1 per request → fire parallel requests
+      const makeRequest = () => fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model:  "dall-e-3",
+          prompt: currentPrompt,
+          n:      1,
+          size:   selectedSize,
+        }),
+      });
+
+      // Fire all requests simultaneously
+      const responses = await Promise.all(
+        Array.from({ length: selectedCount }, makeRequest)
+      );
+
+      // Parse all at once (avoid double-consuming response body)
+      const payloads = await Promise.all(responses.map(r => r.json()));
+
+      // Check for API errors in any response
+      for (const payload of payloads) {
+        if (payload.error) {
+          throw new Error(payload.error.message || "Failed to generate images.");
+        }
+      }
+
+      const urls = payloads.map(p => p.data[0].url);
+      updateImageCards(urls);
+      showToast(`🎉 ${selectedCount} image${selectedCount > 1 ? "s" : ""} generated!`, "success");
+
+    } catch (err) {
+      showToast(`❌ ${err.message}`, "error");
+      imageGallery.querySelectorAll(".img-card.loading").forEach(c => c.remove());
+      if (!imageGallery.children.length) gallerySection.style.display = "none";
+    } finally {
+      finishProgress();
+      isImageGenerating = false;
+      generateBtn.disabled = false;
+      generateBtn.querySelector(".btn-text").style.display    = "inline-flex";
+      generateBtn.querySelector(".btn-loading").style.display = "none";
+    }
+  }
+
+  generateBtn.addEventListener("click", generateAiImages);
+
+  // ─── Single Keyboard Listener on Prompt ─────────────────────────────────────
+  promptInput.addEventListener("keydown", e => {
+    const isOpen = suggestionsBox.classList.contains("active");
+
+    if (isOpen && e.key === "ArrowDown")  { e.preventDefault(); moveSuggestionHighlight(1);  return; }
+    if (isOpen && e.key === "ArrowUp")    { e.preventDefault(); moveSuggestionHighlight(-1); return; }
+    if (isOpen && e.key === "Escape")     { hideSuggestions(); return; }
+    if (isOpen && e.key === "Enter" && highlightedIndex >= 0) {
+      e.preventDefault();
+      const highlighted = suggestionsList.querySelector(".highlighted");
+      if (highlighted) {
+        promptInput.value = highlighted.querySelector(".sugg-text").innerText;
+        hideSuggestions();
+      }
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      generateAiImages();
+    }
+  });
+
+  // ─── Lightbox ────────────────────────────────────────────────────────────────
+  function openLightbox(src, prompt) {
+    lightboxImg.src              = src;
+    lightboxPromptEl.textContent = `Prompt: "${prompt}"`;
+    lightboxPromptText           = prompt;
+    lightboxDownload.onclick = e => {
+      e.preventDefault();
+      downloadBlob(src, `pixelmind-${Date.now()}.jpg`);
+    };
+    lightbox.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeLightbox() {
+    lightbox.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  document.getElementById("lightboxClose").addEventListener("click", closeLightbox);
+  document.getElementById("lightboxBackdrop").addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { closeLightbox(); closeApiKeyModal(); }
+  });
+  lightboxCopy.addEventListener("click", () => {
+    navigator.clipboard.writeText(lightboxPromptText)
+      .then(() => showToast("✅ Prompt copied!", "success"));
+  });
+
+  // ─── History ─────────────────────────────────────────────────────────────────
+  function saveToHistory(imgData, prompt, size, style) {
+    const entry = {
+      id:   Date.now() + Math.random(),
+      imgData, prompt, size, style,
+      date: new Date().toLocaleString(),
+    };
+    historyData.unshift(entry);
+    if (historyData.length > 30) historyData.pop();
+    try { localStorage.setItem("pixelmind_history", JSON.stringify(historyData)); } catch { /* full */ }
+  }
+
+  function renderHistory() {
+    if (!historyData.length) {
+      historyList.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-image-portrait"></i>
+          <p>No history yet. Generate some images to see them here!</p>
+        </div>`;
+      return;
+    }
+    historyList.innerHTML = "";
+    historyData.forEach(entry => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+
+      const thumb = document.createElement("img");
+      thumb.className = "history-thumb";
+      thumb.src = entry.imgData;
+      thumb.alt = "thumb";
+
+      const info = document.createElement("div");
+      info.className = "history-info";
+      info.innerHTML = `
+        <div class="history-prompt">${entry.prompt}</div>
+        <div class="history-meta">
+          <span><i class="fas fa-calendar-alt"></i> ${entry.date}</span>
+          ${entry.size  ? `<span class="history-tag">${entry.size}</span>`              : ""}
+          ${entry.style ? `<span class="history-tag">${entry.style.split(",")[0]}</span>` : ""}
+        </div>`;
+
+      const actions = document.createElement("div");
+      actions.className = "prompt-actions";
+
+      const viewBtn = document.createElement("button");
+      viewBtn.className = "icon-btn";
+      viewBtn.title     = "View";
+      viewBtn.innerHTML = '<i class="fas fa-expand"></i>';
+      viewBtn.addEventListener("click", () => openLightbox(entry.imgData, entry.prompt));
+
+      const dlBtn = document.createElement("button");
+      dlBtn.className = "icon-btn";
+      dlBtn.title     = "Download";
+      dlBtn.innerHTML = '<i class="fas fa-download"></i>';
+      dlBtn.addEventListener("click", () => downloadBlob(entry.imgData, "pixelmind.jpg"));
+
+      actions.appendChild(viewBtn);
+      actions.appendChild(dlBtn);
+      item.appendChild(thumb);
+      item.appendChild(info);
+      item.appendChild(actions);
+      historyList.appendChild(item);
+    });
+  }
+
+  document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+    historyData = [];
+    localStorage.removeItem("pixelmind_history");
+    renderHistory();
+    showToast("🗑️ History cleared!", "success");
+  });
+
+  // ─── Suggestions ─────────────────────────────────────────────────────────────
+  function highlightMatch(text, query) {
+    if (!query) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      text.slice(0, idx) +
+      `<mark>${text.slice(idx, idx + query.length)}</mark>` +
+      text.slice(idx + query.length)
+    );
+  }
+
+  function showSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    if (!q || q.length < 2) { hideSuggestions(); return; }
+    const matches = SUGGESTIONS_DB.filter(s => s.toLowerCase().includes(q)).slice(0, 8);
+    if (!matches.length) { hideSuggestions(); return; }
+
+    suggestionsList.innerHTML = "";
+    highlightedIndex = -1;
+
+    matches.forEach(text => {
+      const li = document.createElement("li");
+      li.className = "suggestion-item";
+      li.innerHTML = `
+        <i class="fas fa-wand-magic-sparkles"></i>
+        <span class="sugg-text">${highlightMatch(text, query.trim())}</span>
+        <i class="fas fa-arrow-right sugg-arrow"></i>`;
+      li.addEventListener("mousedown", e => {
+        e.preventDefault();
+        promptInput.value = text;
+        hideSuggestions();
+        promptInput.focus();
+      });
+      suggestionsList.appendChild(li);
+    });
+    suggestionsBox.classList.add("active");
+  }
+
+  function hideSuggestions() {
+    suggestionsBox.classList.remove("active");
+    highlightedIndex = -1;
+  }
+
+  function moveSuggestionHighlight(dir) {
+    const items = suggestionsList.querySelectorAll(".suggestion-item");
+    if (!items.length) return;
+    items.forEach(i => i.classList.remove("highlighted"));
+    highlightedIndex = (highlightedIndex + dir + items.length) % items.length;
+    items[highlightedIndex].classList.add("highlighted");
+    items[highlightedIndex].scrollIntoView({ block: "nearest" });
+  }
+
+  promptInput.addEventListener("input", () => showSuggestions(promptInput.value));
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".prompt-wrapper")) hideSuggestions();
+  });
+
+  // ─── API Key Modal ────────────────────────────────────────────────────────────
+  function openApiKeyModal() {
+    apiKeyInput.value = getKey();
+    apiKeyModal.classList.add("open");
+    document.body.style.overflow = "hidden";
+    setTimeout(() => apiKeyInput.focus(), 150);
+  }
+
+  function closeApiKeyModal() {
+    apiKeyModal.classList.remove("open");
+    document.body.style.overflow = "";
+    updateKeyBtnState();
+  }
+
+  function updateKeyBtnState() {
+    const key = getKey();
+    if (key) {
+      apiKeyBtn.classList.add("has-key");
+      keyBtnLabel.textContent = "API Key ✓";
+      const banner = document.getElementById("noKeyBanner");
+      if (banner) banner.remove();
+    } else {
+      apiKeyBtn.classList.remove("has-key");
+      keyBtnLabel.textContent = "Set API Key";
+      showNoKeyBanner();
+    }
+  }
+
+  function showNoKeyBanner() {
+    if (document.getElementById("noKeyBanner")) return;
+    const heroText = document.querySelector(".hero-text");
+    if (!heroText) return;
+    const banner = document.createElement("div");
+    banner.className = "no-key-banner";
+    banner.id        = "noKeyBanner";
+    banner.innerHTML = `
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>No API key set. <a id="bannerKeyLink">Click here to add your OpenAI key</a> to start generating.</span>`;
+    heroText.insertAdjacentElement("afterend", banner);
+    document.getElementById("bannerKeyLink").addEventListener("click", openApiKeyModal);
+  }
+
+  apiKeySave.addEventListener("click", () => {
+    const val = apiKeyInput.value.trim();
+    if (!val.startsWith("sk-")) {
+      apiKeyInput.parentElement.style.boxShadow = "0 0 0 2px var(--danger)";
+      showToast("❌ Invalid key. It should start with sk-", "error");
+      setTimeout(() => apiKeyInput.parentElement.style.boxShadow = "", 1500);
+      return;
+    }
+    saveKey(val);
+    closeApiKeyModal();
+    showToast("✅ API key saved! You're ready to generate.", "success");
+  });
+
+  apiKeyClear.addEventListener("click", () => {
+    clearKey();
+    apiKeyInput.value = "";
+    closeApiKeyModal();
+    showToast("🗑️ API key removed.", "success");
+  });
+
+  keyToggleBtn.addEventListener("click", () => {
+    const isPassword = apiKeyInput.type === "password";
+    apiKeyInput.type = isPassword ? "text" : "password";
+    keyToggleBtn.innerHTML = isPassword
+      ? '<i class="fas fa-eye-slash"></i>'
+      : '<i class="fas fa-eye"></i>';
+  });
+
+  apiKeyInput.addEventListener("keydown", e => {
+    if (e.key === "Enter")  apiKeySave.click();
+    if (e.key === "Escape") closeApiKeyModal();
+  });
+
+  apiKeyBtn.addEventListener("click", openApiKeyModal);
+
+  apiKeyModal.addEventListener("click", e => {
+    if (e.target === apiKeyModal) closeApiKeyModal();
+  });
+
+  // ─── Init ────────────────────────────────────────────────────────────────────
+  updateKeyBtnState();
+
+  // Show modal automatically on first visit if no key is set
+  if (!getKey()) {
+    setTimeout(openApiKeyModal, 600);
+  }
+
+}); // end DOMContentLoaded
