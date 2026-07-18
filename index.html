@@ -27,7 +27,7 @@
       <nav class="header-nav">
         <button class="nav-btn active" id="navGenerate"><i class="fas fa-image"></i> Generate</button>
         <button class="nav-btn" id="navHistory"><i class="fas fa-clock-rotate-left"></i> History</button>
-        <button class="nav-btn key-btn" id="apiKeyBtn"><i class="fas fa-key"></i> <span id="keyBtnLabel">Set API Key</span></button>
+        <button class="nav-btn key-btn" id="authBtn"><i class="fas fa-user-lock"></i> <span id="authBtnLabel">Login</span></button>
       </nav>
     </div>
   </header>
@@ -177,25 +177,29 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
-  <!-- ===== API KEY MODAL ===== -->
-  <div class="modal-overlay" id="apiKeyModal">
+  <!-- ===== LOGIN MODAL ===== -->
+  <div class="modal-overlay" id="authModal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-icon"><i class="fas fa-key"></i></div>
-        <h2 class="modal-title">Enter Your OpenAI API Key</h2>
-        <p class="modal-desc">Your key is stored only in <strong>your browser</strong> and never sent to any server except OpenAI. You pay your own credits.</p>
+        <div class="modal-icon"><i class="fas fa-user-shield"></i></div>
+        <h2 class="modal-title">PixelMind AI Login</h2>
+        <p class="modal-desc">Sign in to your account to securely generate DALL-E AI images without exposing API keys.</p>
       </div>
       <div class="modal-body">
+        <div class="key-input-wrap" style="margin-bottom: 12px;">
+          <i class="fas fa-user key-input-icon"></i>
+          <input type="text" id="usernameInput" class="key-input" placeholder="Username" autocomplete="off" spellcheck="false" style="padding-right: 14px;">
+        </div>
         <div class="key-input-wrap">
           <i class="fas fa-lock key-input-icon"></i>
-          <input type="password" id="apiKeyInput" class="key-input" placeholder="sk-proj-..." autocomplete="off" spellcheck="false">
-          <button class="key-toggle-btn" id="keyToggleBtn" title="Show/Hide key"><i class="fas fa-eye"></i></button>
+          <input type="password" id="passwordInput" class="key-input" placeholder="Password" autocomplete="off" spellcheck="false">
+          <button class="key-toggle-btn" id="passwordToggleBtn" title="Show/Hide password"><i class="fas fa-eye"></i></button>
         </div>
-        <p class="key-hint"><i class="fas fa-circle-info"></i> Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a></p>
+        <p class="key-hint"><i class="fas fa-circle-info"></i> Default access: <strong>admin / password123</strong></p>
       </div>
       <div class="modal-footer">
-        <button class="modal-btn secondary" id="apiKeyClear"><i class="fas fa-trash-can"></i> Clear Key</button>
-        <button class="modal-btn primary" id="apiKeySave"><i class="fas fa-check"></i> Save & Continue</button>
+        <button class="modal-btn secondary" id="authCancelBtn">Cancel</button>
+        <button class="modal-btn primary" id="authSubmitBtn"><i class="fas fa-sign-in-alt"></i> Sign In</button>
       </div>
     </div>
   </div>

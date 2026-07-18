@@ -2,10 +2,10 @@
    PixelMind AI — script.js
    ======================================== */
 
-// ─── API Key Helpers ──────────────────────────────────────────────────────────
-function getKey()       { return localStorage.getItem("pixelmind_api_key") || ""; }
-function saveKey(k)     { localStorage.setItem("pixelmind_api_key", k); }
-function clearKey()     { localStorage.removeItem("pixelmind_api_key"); }
+// ─── Token Auth Helpers ───────────────────────────────────────────────────────
+function getToken()       { return localStorage.getItem("pixelmind_token") || ""; }
+function saveToken(t)     { localStorage.setItem("pixelmind_token", t); }
+function clearToken()     { localStorage.removeItem("pixelmind_token"); }
 
 // ─── Suggestion Database ──────────────────────────────────────────────────────
 const SUGGESTIONS_DB = [
@@ -108,14 +108,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const generatePanel    = document.getElementById("generatePanel");
   const historyPanel     = document.getElementById("historyPanel");
 
-  // Modal elements
-  const apiKeyModal  = document.getElementById("apiKeyModal");
-  const apiKeyInput  = document.getElementById("apiKeyInput");
-  const apiKeyBtn    = document.getElementById("apiKeyBtn");
-  const keyBtnLabel  = document.getElementById("keyBtnLabel");
-  const apiKeySave   = document.getElementById("apiKeySave");
-  const apiKeyClear  = document.getElementById("apiKeyClear");
-  const keyToggleBtn = document.getElementById("keyToggleBtn");
+  // Modal & Auth elements
+  const authModal         = document.getElementById("authModal");
+  const usernameInput     = document.getElementById("usernameInput");
+  const passwordInput     = document.getElementById("passwordInput");
+  const authBtn           = document.getElementById("authBtn");
+  const authBtnLabel      = document.getElementById("authBtnLabel");
+  const authSubmitBtn     = document.getElementById("authSubmitBtn");
+  const authCancelBtn     = document.getElementById("authCancelBtn");
+  const passwordToggleBtn = document.getElementById("passwordToggleBtn");
 
   // ─── Toast ──────────────────────────────────────────────────────────────────
   function showToast(msg, type = "default") {
@@ -337,10 +338,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!rawPrompt) return showToast("⚠️ Please enter a prompt first!", "error");
     if (isImageGenerating) return;
 
-    const apiKey = getKey();
-    if (!apiKey) {
-      openApiKeyModal();
-      showToast("🔑 Please set your OpenAI API key first!", "error");
+    const token = getToken();
+    if (!token) {
+      openAuthModal();
+      showToast("🔑 Please login first to generate images!", "error");
       return;
     }
 
@@ -362,15 +363,14 @@ document.addEventListener("DOMContentLoaded", () => {
     startProgress();
 
     try {
-      // DALL-E 3 only allows n=1 per request → fire parallel requests
-      const makeRequest = () => fetch("https://api.openai.com/v1/images/generations", {
+      // Fire request to the secure backend proxy
+      const makeRequest = () => fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type":  "application/json",
-          "Authorization": `Bearer ${apiKey}`,
+          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({
-          model:  "dall-e-3",
           prompt: currentPrompt,
           n:      1,
           size:   selectedSize,
@@ -388,7 +388,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Check for API errors in any response
       for (const payload of payloads) {
         if (payload.error) {
-          throw new Error(payload.error.message || "Failed to generate images.");
+          throw new Error(payload.error || "Failed to generate images.");
         }
       }
 
@@ -591,30 +591,31 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!e.target.closest(".prompt-wrapper")) hideSuggestions();
   });
 
-  // ─── API Key Modal ────────────────────────────────────────────────────────────
-  function openApiKeyModal() {
-    apiKeyInput.value = getKey();
-    apiKeyModal.classList.add("open");
+  // ─── Login Modal & Auth Logic ─────────────────────────────────────────────────
+  function openAuthModal() {
+    usernameInput.value = "";
+    passwordInput.value = "";
+    authModal.classList.add("open");
     document.body.style.overflow = "hidden";
-    setTimeout(() => apiKeyInput.focus(), 150);
+    setTimeout(() => usernameInput.focus(), 150);
   }
 
-  function closeApiKeyModal() {
-    apiKeyModal.classList.remove("open");
+  function closeAuthModal() {
+    authModal.classList.remove("open");
     document.body.style.overflow = "";
-    updateKeyBtnState();
+    updateAuthBtnState();
   }
 
-  function updateKeyBtnState() {
-    const key = getKey();
-    if (key) {
-      apiKeyBtn.classList.add("has-key");
-      keyBtnLabel.textContent = "API Key ✓";
+  function updateAuthBtnState() {
+    const token = getToken();
+    if (token) {
+      authBtn.classList.add("has-key");
+      authBtnLabel.textContent = "Logout";
       const banner = document.getElementById("noKeyBanner");
       if (banner) banner.remove();
     } else {
-      apiKeyBtn.classList.remove("has-key");
-      keyBtnLabel.textContent = "Set API Key";
+      authBtn.classList.remove("has-key");
+      authBtnLabel.textContent = "Login";
       showNoKeyBanner();
     }
   }
@@ -628,56 +629,81 @@ document.addEventListener("DOMContentLoaded", () => {
     banner.id        = "noKeyBanner";
     banner.innerHTML = `
       <i class="fas fa-triangle-exclamation"></i>
-      <span>No API key set. <a id="bannerKeyLink">Click here to add your OpenAI key</a> to start generating.</span>`;
+      <span>Please log in to start generating. <a id="bannerKeyLink">Click here to sign in</a>.</span>`;
     heroText.insertAdjacentElement("afterend", banner);
-    document.getElementById("bannerKeyLink").addEventListener("click", openApiKeyModal);
+    document.getElementById("bannerKeyLink").addEventListener("click", openAuthModal);
   }
 
-  apiKeySave.addEventListener("click", () => {
-    const val = apiKeyInput.value.trim();
-    if (!val.startsWith("sk-")) {
-      apiKeyInput.parentElement.style.boxShadow = "0 0 0 2px var(--danger)";
-      showToast("❌ Invalid key. It should start with sk-", "error");
-      setTimeout(() => apiKeyInput.parentElement.style.boxShadow = "", 1500);
+  async function handleLogin() {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    if (!username || !password) {
+      showToast("⚠️ Username and password are required.", "error");
       return;
     }
-    saveKey(val);
-    closeApiKeyModal();
-    showToast("✅ API key saved! You're ready to generate.", "success");
-  });
 
-  apiKeyClear.addEventListener("click", () => {
-    clearKey();
-    apiKeyInput.value = "";
-    closeApiKeyModal();
-    showToast("🗑️ API key removed.", "success");
-  });
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
 
-  keyToggleBtn.addEventListener("click", () => {
-    const isPassword = apiKeyInput.type === "password";
-    apiKeyInput.type = isPassword ? "text" : "password";
-    keyToggleBtn.innerHTML = isPassword
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Authentication failed.");
+      }
+
+      saveToken(data.token);
+      closeAuthModal();
+      showToast(`Welcome back, ${data.username}! 🎉`, "success");
+    } catch (err) {
+      passwordInput.parentElement.style.boxShadow = "0 0 0 2px var(--danger)";
+      showToast(`❌ ${err.message}`, "error");
+      setTimeout(() => passwordInput.parentElement.style.boxShadow = "", 1500);
+    }
+  }
+
+  authSubmitBtn.addEventListener("click", handleLogin);
+  authCancelBtn.addEventListener("click", closeAuthModal);
+
+  passwordToggleBtn.addEventListener("click", () => {
+    const isPassword = passwordInput.type === "password";
+    passwordInput.type = isPassword ? "text" : "password";
+    passwordToggleBtn.innerHTML = isPassword
       ? '<i class="fas fa-eye-slash"></i>'
       : '<i class="fas fa-eye"></i>';
   });
 
-  apiKeyInput.addEventListener("keydown", e => {
-    if (e.key === "Enter")  apiKeySave.click();
-    if (e.key === "Escape") closeApiKeyModal();
+  passwordInput.addEventListener("keydown", e => {
+    if (e.key === "Enter")  handleLogin();
+  });
+  usernameInput.addEventListener("keydown", e => {
+    if (e.key === "Enter")  passwordInput.focus();
   });
 
-  apiKeyBtn.addEventListener("click", openApiKeyModal);
+  authBtn.addEventListener("click", () => {
+    if (getToken()) {
+      clearToken();
+      updateAuthBtnState();
+      showToast("Logged out successfully.", "success");
+    } else {
+      openAuthModal();
+    }
+  });
 
-  apiKeyModal.addEventListener("click", e => {
-    if (e.target === apiKeyModal) closeApiKeyModal();
+  authModal.addEventListener("click", e => {
+    if (e.target === authModal) closeAuthModal();
   });
 
   // ─── Init ────────────────────────────────────────────────────────────────────
-  updateKeyBtnState();
+  updateAuthBtnState();
 
-  // Show modal automatically on first visit if no key is set
-  if (!getKey()) {
-    setTimeout(openApiKeyModal, 600);
+  // Show modal automatically on first visit if not logged in
+  if (!getToken()) {
+    setTimeout(openAuthModal, 600);
   }
 
 }); // end DOMContentLoaded
