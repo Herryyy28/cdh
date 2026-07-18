@@ -75,6 +75,7 @@ const SURPRISE_PROMPTS = [
 document.addEventListener("DOMContentLoaded", () => {
 
   // ─── State ─────────────────────────────────────────────────────────────────
+  const API_BASE = window.location.port === "3000" ? "" : "http://localhost:3000";
   let isImageGenerating = false;
   let selectedStyle     = "";
   let selectedCount     = 1;
@@ -364,7 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       // Fire request to the secure backend proxy
-      const makeRequest = () => fetch("/api/generate", {
+      const makeRequest = () => fetch(`${API_BASE}/api/generate`, {
         method: "POST",
         headers: {
           "Content-Type":  "application/json",
@@ -644,7 +645,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
