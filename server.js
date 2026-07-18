@@ -59,7 +59,7 @@ function authenticateToken(req, res, next) {
 
 // Secure Proxy Endpoint for Free Pollinations.ai Image Generation
 app.post('/api/generate', authenticateToken, async (req, res) => {
-  const { prompt, size } = req.body;
+  const { prompt, size, n } = req.body;
 
   if (!prompt) {
     return res.status(400).json({ error: 'Prompt is required.' });
@@ -70,19 +70,22 @@ app.post('/api/generate', authenticateToken, async (req, res) => {
     const dimensions = size ? size.split('x') : ['1024', '1024'];
     const width = parseInt(dimensions[0]) || 1024;
     const height = parseInt(dimensions[1]) || 1024;
+    const count = parseInt(n) || 1;
     
-    // Generate a random seed so successive identical prompt requests return new images
-    const seed = Math.floor(Math.random() * 9999999);
-    
-    // Construct Pollinations.ai URL (nologo removes watermark)
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+    const imageUrls = [];
+    for (let i = 0; i < count; i++) {
+      // Generate a random seed for each image
+      const seed = Math.floor(Math.random() * 9999999) + i;
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+      imageUrls.push({ url: imageUrl });
+    }
 
     return res.json({
-      data: [{ url: imageUrl }]
+      data: imageUrls
     });
   } catch (error) {
     console.error('Generation Error:', error);
-    return res.status(500).json({ error: 'Server error occurred while preparing the image.' });
+    return res.status(500).json({ error: 'Server error occurred while preparing the images.' });
   }
 });
 

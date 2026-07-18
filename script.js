@@ -364,8 +364,8 @@ document.addEventListener("DOMContentLoaded", () => {
     startProgress();
 
     try {
-      // Fire request to the secure backend proxy
-      const makeRequest = () => fetch(`${API_BASE}/api/generate`, {
+      // Fire single request to secure backend proxy requesting selectedCount images
+      const response = await fetch(`${API_BASE}/api/generate`, {
         method: "POST",
         headers: {
           "Content-Type":  "application/json",
@@ -373,27 +373,18 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         body: JSON.stringify({
           prompt: currentPrompt,
-          n:      1,
+          n:      selectedCount,
           size:   selectedSize,
         }),
       });
 
-      // Fire all requests simultaneously
-      const responses = await Promise.all(
-        Array.from({ length: selectedCount }, makeRequest)
-      );
+      const payload = await response.json();
 
-      // Parse all at once (avoid double-consuming response body)
-      const payloads = await Promise.all(responses.map(r => r.json()));
-
-      // Check for API errors in any response
-      for (const payload of payloads) {
-        if (payload.error) {
-          throw new Error(payload.error || "Failed to generate images.");
-        }
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error || "Failed to generate images.");
       }
 
-      const urls = payloads.map(p => p.data[0].url);
+      const urls = payload.data.map(item => item.url);
       updateImageCards(urls);
       showToast(`🎉 ${selectedCount} image${selectedCount > 1 ? "s" : ""} generated!`, "success");
 
